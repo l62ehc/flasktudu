@@ -1,0 +1,12 @@
+name: Hello World Workflow
+
+on:
+  push:   # מפעיל את האוטומציה בכל פעם שעושים push ל־GitHub
+
+jobs:
+  say-hello:
+    runs-on: ubuntu-latest   # הפעולה תרוץ על מכונה וירטואלית לינוקסית
+
+    steps:
+      - name: Print Hello World
+        run: echo "Hello World"
