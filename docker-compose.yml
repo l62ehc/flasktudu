@@ -57,6 +57,15 @@ services:
       - mysql
 
 
+
+  tester:
+    build: ./tester
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    depends_on:
+      - mysql
+      - app
+
 # volumes definition here
 volumes:
   # just a persistance data

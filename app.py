@@ -2,12 +2,12 @@ from flask import Flask, render_template, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 import os
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://{}:{}@{}/{}'.format(
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://{}:{}@{}:{}/{}'.format(
     os.getenv('DB_USER', 'root'),
     os.getenv('DB_PASSWORD', 'pass'),
     os.getenv('DB_HOST', 'flask_mysql'),
-    os.getenv('DB_NAME', 'flask')
-    os.getenv('DB_port','3307')
+    os.getenv('DB_PORT','3306'),
+    os.getenv('DB_NAME', 'flask'),
 )
 db = SQLAlchemy(app)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
