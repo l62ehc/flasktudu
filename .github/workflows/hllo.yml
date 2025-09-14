@@ -3,11 +3,9 @@ name: Docker CI/CD
 on:
   push:
     branches: ["main"]
-  pull_request:
-    branches: ["main"]
 
 jobs:
-  build-and-push:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,16 +18,25 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
-      - name: Build and push Flask app image
+      - name: Build Flask app image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+          push: false   # בשלב טסטים לא דוחפים עדיין
+          tags: flask_app:test
 
-      # אם תרצה לבדוק שה־compose רץ
-      - name: Run docker-compose (test only)
+      - name: Start docker-compose
+        run: docker compose up -d --build
+
+      - name: Wait for containers to be healthy
+        run: sleep 20
+
+      - name: Run tester script
         run: |
-          docker compose up -d
-          docker ps
+          chmod +x tester/check.sh
+          ./tester/check.sh
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
