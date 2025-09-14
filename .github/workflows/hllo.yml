@@ -1,4 +1,4 @@
-
+```yaml
 name: Docker CI/CD
 
 on:
@@ -34,11 +34,11 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: flask_app:test
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:test
 
       # 5. Start docker-compose
       - name: Start docker-compose
-        run: docker compose up -d --build
+        run: docker compose up -d
 
       # 6. Wait for containers to start
       - name: Wait for containers
