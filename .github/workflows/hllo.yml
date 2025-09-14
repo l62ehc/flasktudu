@@ -10,42 +10,43 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4   # מושך את הקוד מה-repo
+        uses: actions/checkout@v4
 
-      - name: List files for debugging
-        run: ls -R   # מציג את כל הקבצים כדי לוודא שהקובץ check.sh נמצא במקום הנכון
+      - name: List repository files
+        run: ls -R   # מציג את כל הקבצים כדי לבדוק את הנתיב המדויק ל-check.sh
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3   # כניסה ל-Docker Hub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
       - name: Build Flask app image
-        uses: docker/build-push-action@v6   # בונה את האימג' של האפליקציה
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: false          # בשלב זה לא דוחפים עדיין
-          tags: flask_app:test # אימג' זמני לבדיקה
+          push: false
+          tags: flask_app:test
 
       - name: Start docker-compose
-        run: docker compose up -d --build   # מרים את כל השירותים ברקע
+        run: docker compose up -d --build
 
       - name: Wait for containers
-        run: sleep 20   # מחכה שה־containers יעלו (למשל MySQL)
+        run: sleep 20
 
+      # השלב הבא יחכה עד שנדע את הנתיב המדויק של check.sh
       - name: Run tester script
         run: |
-          chmod +x flasktudu/tester/check.sh   # נותן הרשאת הרצה
-          ./flasktudu/tester/check.sh          # מפעיל את הסקריפט
+          chmod +x ???/check.sh
+          ./???/check.sh
 
       - name: Stop containers
         if: always()
-        run: docker compose down -v   # סוגר ומנקה קונטיינרים ו-volumes
+        run: docker compose down -v
 
       - name: Push image to Docker Hub
-        if: success()   # ירוץ רק אם הטסטים עברו בהצלחה
+        if: success()
         uses: docker/build-push-action@v6
         with:
           context: .
