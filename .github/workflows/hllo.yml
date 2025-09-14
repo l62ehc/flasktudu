@@ -12,6 +12,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4   # מושך את הקוד מה-repo
 
+      - name: List files for debugging
+        run: ls -R   # מציג את כל הקבצים כדי לוודא שהקובץ check.sh נמצא במקום הנכון
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3   # כניסה ל-Docker Hub
         with:
@@ -19,7 +22,7 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
       - name: Build Flask app image
-        uses: docker/build-push-action@v6   # בונה את האימג'
+        uses: docker/build-push-action@v6   # בונה את האימג' של האפליקציה
         with:
           context: .
           file: ./Dockerfile
@@ -33,11 +36,10 @@ jobs:
         run: sleep 20   # מחכה שה־containers יעלו (למשל MySQL)
 
       - name: Run tester script
-        working-directory: flasktudu/tester   # נכנס לתיקייה של הטסטר
         run: |
-          chmod +x check.sh   # נותן הרשאת הרצה
-          ./check.sh          # מפעיל את הסקריפט
-          
+          chmod +x flasktudu/tester/check.sh   # נותן הרשאת הרצה
+          ./flasktudu/tester/check.sh          # מפעיל את הסקריפט
+
       - name: Stop containers
         if: always()
         run: docker compose down -v   # סוגר ומנקה קונטיינרים ו-volumes
