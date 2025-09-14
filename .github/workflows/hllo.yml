@@ -9,22 +9,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Check out the repository
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Debug: show all files to verify the location of check.sh
-      - name: List repository files
-        run: ls -R
+      # 2. Debug: show current directory and all files recursively
+      - name: Debug: show all files
+        run: |
+          pwd
+          ls -R
 
-      # 3. Login to Docker Hub
+      # 3. Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
-      # 4. Build Flask app Docker image (local/test)
+      # 4. Build Flask app Docker image
       - name: Build Flask app image
         uses: docker/build-push-action@v6
         with:
@@ -33,26 +35,35 @@ jobs:
           push: false
           tags: flask_app:test
 
-      # 5. Start all services via docker-compose
+      # 5. Start docker-compose
       - name: Start docker-compose
         run: docker compose up -d --build
 
-      # 6. Wait a bit for services to start
+      # 6. Wait for containers to start
       - name: Wait for containers
         run: sleep 20
 
-      # 7. Run tester script
+      # 7. Run tester script from correct directory
       - name: Run tester script
         run: |
-          chmod +x tester/check.sh
-          ./tester/check.sh
+          cd tester            # נכנסים לתיקייה של הטסטים
+          chmod +x check.sh    # נותנים הרשאת הרצה
+          ./check.sh           # מריצים את הסקריפט
 
-      # 8. Stop containers and remove volumes
+      # 8. Show container logs if tests failed
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          echo "Tests failed! Showing logs:"
+          docker logs flask_app || true
+          docker logs flask_mysql || true
+
+      # 9. Stop containers and remove volumes
       - name: Stop containers
         if: always()
         run: docker compose down -v
 
-      # 9. Push Docker image to Docker Hub if tests passed
+      # 10. Push Docker image to Docker Hub if tests passed
       - name: Push image to Docker Hub
         if: success()
         uses: docker/build-push-action@v6
