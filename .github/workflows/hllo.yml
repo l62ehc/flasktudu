@@ -5,38 +5,48 @@ on:
     branches: ["main"]
 
 jobs:
-  build-and-test:
+  build-test-push:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4   # מושך את הקוד מה-repo
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3   # כניסה ל-Docker Hub
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
       - name: Build Flask app image
+        uses: docker/build-push-action@v6   # בונה את האימג'
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false          # בשלב זה לא דוחפים עדיין
+          tags: flask_app:test # אימג' זמני לבדיקה
+
+      - name: Start docker-compose
+        run: docker compose up -d --build   # מרים את כל השירותים ברקע
+
+      - name: Wait for containers
+        run: sleep 20   # מחכה שה־containers יעלו (למשל MySQL)
+
+      - name: Run tester script
+        working-directory: flasktudu/tester   # נכנס לתיקייה של הטסטר
+        run: |
+          chmod +x check.sh   # נותן הרשאת הרצה
+          ./check.sh          # מפעיל את הסקריפט
+          
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v   # סוגר ומנקה קונטיינרים ו-volumes
+
+      - name: Push image to Docker Hub
+        if: success()   # ירוץ רק אם הטסטים עברו בהצלחה
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: false   # בשלב טסטים לא דוחפים עדיין
-          tags: flask_app:test
-
-      - name: Start docker-compose
-        run: docker compose up -d --build
-
-      - name: Wait for containers to be healthy
-        run: sleep 20
-
-      - name: Run tester script
-        run: |
-          chmod +x tester/check.sh
-          ./tester/check.sh
-
-      - name: Stop containers
-        if: always()
-        run: docker compose down -v
+          push: true
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
