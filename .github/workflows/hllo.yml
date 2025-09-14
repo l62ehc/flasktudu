@@ -1,26 +1,27 @@
 name: Docker CI/CD
+
 on:
   push:
     branches: ["main"]
+
 jobs:
   build-test-push:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
-      # 2. Debug: show current directory and all files recursively
-      - name: Debug: show all files
+        
+      - name: Debug show all files
         run: |
           pwd
           ls -R
-      # 3. Log in to Docker Hub
+          
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
-      # 4. Build Flask app Docker image
+          
       - name: Build Flask app image
         uses: docker/build-push-action@v6
         with:
@@ -28,30 +29,30 @@ jobs:
           file: ./Dockerfile
           push: false
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:test
-      # 5. Start docker-compose
+          
       - name: Start docker-compose
         run: docker compose up -d
-      # 6. Wait for containers to start
+        
       - name: Wait for containers
         run: sleep 20
-      # 7. Run tester script from correct directory
+        
       - name: Run tester script
         run: |
           cd tester
           chmod +x check.sh
           ./check.sh
-      # 8. Show container logs if tests failed
+          
       - name: Show container logs on failure
         if: failure()
         run: |
           echo "Tests failed! Showing logs:"
           docker logs flask_app || true
           docker logs flask_mysql || true
-      # 9. Stop containers and remove volumes
+          
       - name: Stop containers
         if: always()
         run: docker compose down -v
-      # 10. Push Docker image to Docker Hub if tests passed
+        
       - name: Push image to Docker Hub
         if: success()
         uses: docker/build-push-action@v6
