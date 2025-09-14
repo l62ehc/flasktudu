@@ -46,9 +46,9 @@ jobs:
       # 7. Run tester script from correct directory
       - name: Run tester script
         run: |
-          cd tester            # נכנסים לתיקייה של הטסטים
-          chmod +x check.sh    # נותנים הרשאת הרצה
-          ./check.sh           # מריצים את הסקריפט
+          cd tester
+          chmod +x check.sh
+          ./check.sh
 
       # 8. Show container logs if tests failed
       - name: Show container logs on failure
