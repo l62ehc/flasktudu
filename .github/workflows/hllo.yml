@@ -1,11 +1,9 @@
-name: Docker CI/CD
-
+name: Docker CI/CD with AWS Deploy
 on:
   push:
     branches: ["main"]
-
 jobs:
-  build-test-push:
+  build-test-push-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -60,3 +58,65 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+
+      # החלק החדש - דיפלוי אוטומטי לשרת AWS
+      - name: Deploy to AWS EC2
+        if: success()
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USERNAME }}
+          key: ${{ secrets.AWS_PRIVATE_KEY }}
+          port: ${{ secrets.AWS_PORT || 22 }}
+          script: |
+            echo "🚀 Starting deployment to AWS..."
+            
+            # עצירת הקונטיינר הקיים
+            docker stop flask_app || true
+            docker rm flask_app || true
+            
+            # משיכת הגרסה החדשה מ-Docker Hub
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+            
+            # הרצת הקונטיינר החדש
+            docker run -d \
+              --name flask_app \
+              -p 80:5000 \
+              --restart unless-stopped \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+            
+            # ניקוי images ישנים
+            docker image prune -f
+            
+            echo "✅ Deployment completed successfully!"
+            
+      # אלטרנטיבה: דיפלוי עם docker-compose בשרת
+      - name: Deploy with docker-compose to AWS
+        if: success()
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USERNAME }}
+          key: ${{ secrets.AWS_PRIVATE_KEY }}
+          port: ${{ secrets.AWS_PORT || 22 }}
+          script: |
+            cd /home/ubuntu/your-app  # נתיב לתיקיית האפליקציה בשרת
+            
+            # עדכון הקוד מ-Git
+            git pull origin main
+            
+            # עדכון הקונטיינרים
+            docker-compose pull
+            docker-compose up -d --force-recreate
+            
+            # ניקוי
+            docker system prune -f
+            
+      # הודעת הצלחה
+      - name: Deployment Success Notification
+        if: success()
+        run: |
+          echo "🎉 Full CI/CD pipeline completed successfully!"
+          echo "✅ Image built and tested"
+          echo "✅ Image pushed to Docker Hub"
+          echo "✅ Application deployed to AWS server"
