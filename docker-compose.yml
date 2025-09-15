@@ -1,75 +1,98 @@
-version: '3'
-services:
-  app:
-    image: flask_app:latest
-    container_name: flask_app
-    restart: unless-stopped
-    build:
-      # build the image from Dockerfile
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      # set database credentials
-      DB_HOST: flask_mysql
-      DB_NAME: flask
-      DB_USER: flask
-      DB_PASSWORD: password
+name: Docker CI/CD with AWS Deploy
 
-    links:
-      # network connection with these services
-      - mysql
-    depends_on:
-      # build those images first
-      - mysql
-    ports:
-      # bind on our 5000 port because most people have 80, 8080 already bound
-      - "5000:5000"
+on:
+  push:
+    branches: ["main"]
 
-  mysql:
-    container_name: flask_mysql
-    # let's grab from mysql 5.7 image
-    image: mysql:latest
-    volumes:
-        # pass volume named mysql-data to mysql container
-      - mysql-data:/var/lib/mysql
-      - ./db/mysqld.cnf:/etc/mysql/mysql.conf.d/mysqld.cnf
-    restart: unless-stopped
-    ports:
-      - "3307:3306"
-      # credentials
-    environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: flask
-      MYSQL_USER: flask
-      MYSQL_PASSWORD: password
+jobs:
+  build-test-push-deploy:
+    runs-on: ubuntu-latest
 
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: php
-    restart: unless-stopped
-    environment:
-     PMA_HOST: mysql
-     PMA_USER: root
-     PMA_PASSWORD: password
-    ports:
-      - "8080:80"
-    depends_on:
-      - mysql
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_KEY }}
 
+      - name: Build and test Flask app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false # Build locally for testing
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:test
 
-  tester:
-    build: ./tester
-    environment:
-      MYSQL_ROOT_PASSWORD: password
-    depends_on:
-      - mysql
-      - app
+      - name: Run docker-compose for testing
+        run: docker compose up -d
 
-# volumes definition here
-volumes:
-  # just a persistance data
-  mysql-data:
-    driver: local
+      - name: Wait for services to be ready
+        run: |
+          sleep 20 # Wait a fixed time for services to start
+          # Alternatively, use a smarter check
+          # while ! curl http://localhost:5000; do sleep 5; done
 
+      - name: Run tester script
+        run: |
+          cd tester
+          chmod +x check.sh
+          ./check.sh
 
+      - name: Stop testing containers
+        if: always()
+        run: docker compose down -v
+
+      - name: Push image to Docker Hub
+        if: success()
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+
+      - name: Deploy to AWS EC2
+        if: success()
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USERNAME }}
+          key: ${{ secrets.AWS_PRIVATE_KEY }}
+          port: ${{ secrets.AWS_PORT || 22 }}
+          script: |
+            echo "🚀 Starting deployment to AWS..."
+            # Change directory to project folder, or create if it doesn't exist
+            mkdir -p /home/ec2-user/flask-app
+            cd /home/ec2-user/flask-app
+
+            # Update repository files
+            if [ ! -d ".git" ]; then
+              sudo yum install -y git
+              git clone https://github.com/${{ github.repository }}.git .
+            else
+              git pull origin main
+            fi
+
+            # Pull latest Docker image from Docker Hub
+            sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+
+            # Update docker-compose.yml with the correct image tag
+            sed -i 's/image: flask_app:latest/image: ${{ secrets.DOCKER_HUB_USERNAME }}\/flask_app:latest/' docker-compose.yml
+
+            # Clean up old containers and networks before starting new ones
+            sudo docker-compose down -v || true
+
+            # Start services with the updated image
+            sudo docker-compose up -d --force-recreate
+
+            # Verify services are running
+            echo "📋 Running containers:"
+            sudo docker-compose ps
+
+            # Prune old images
+            sudo docker image prune -f
+            
+            echo "✅ Full stack deployment completed successfully!"
