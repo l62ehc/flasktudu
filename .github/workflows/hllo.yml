@@ -59,8 +59,8 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
 
-      # דיפלוי פשוט עם Docker
-      - name: Deploy to AWS EC2
+      # דיפלוי עם docker-compose
+      - name: Deploy to AWS EC2 with docker-compose
         if: success()
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -71,35 +71,54 @@ jobs:
           script: |
             echo "🚀 Starting deployment to AWS..."
             
-            # עצירת הקונטיינר הקיים
-            sudo docker stop flask_app || true
-            sudo docker rm flask_app || true
+            # יצירת תיקיית פרויקט אם לא קיימת
+            mkdir -p /home/ec2-user/flask-app
+            cd /home/ec2-user/flask-app
             
-            # ניקוי images ישנים
-            sudo docker image prune -f || true
+            # הורדת הקבצים הנדרשים מ-GitHub (docker-compose.yml וכו')
+            if [ ! -d ".git" ]; then
+              # אם זה הפעם הראשונה - clone הרפוזיטורי
+              sudo yum install -y git
+              git clone https://github.com/${{ github.repository }}.git .
+            else
+              # אם כבר קיים - pull עדכונים
+              git pull origin main
+            fi
             
-            # משיכת הגרסה החדשה מ-Docker Hub
+            # עצירת קונטיינרים קיימים
+            sudo docker-compose down || true
+            
+            # עדכון התמונה החדשה מ-Docker Hub
             sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
             
-            # הרצת הקונטיינר החדש על פורט 5000
-            sudo docker run -d \
-              --name flask_app \
-              -p 5000:5000 \
-              --restart unless-stopped \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
+            # עדכון docker-compose.yml להשתמש בתמונה מ-Docker Hub
+            sed -i 's/image: flask_app:latest/image: ${{ secrets.DOCKER_HUB_USERNAME }}\/flask_app:latest/' docker-compose.yml
             
-            # בדיקה שהקונטיינר רץ
-            sleep 5
-            if sudo docker ps | grep flask_app; then
-              echo "✅ Container is running successfully!"
-              echo "🌐 Application available at: http://${{ secrets.AWS_HOST }}:5000"
+            # הפעלת כל השירותים
+            sudo docker-compose up -d
+            
+            # המתנה שהשירותים יעלו
+            sleep 15
+            
+            # בדיקה שהקונטיינרים רצים
+            echo "📋 Running containers:"
+            sudo docker-compose ps
+            
+            # בדיקת בריאות
+            if sudo docker-compose ps | grep flask_app | grep Up; then
+              echo "✅ Flask App is running successfully!"
+              echo "🌐 Flask App: http://${{ secrets.AWS_HOST }}:5000"
+              echo "🗄️  phpMyAdmin: http://${{ secrets.AWS_HOST }}:8080"
             else
-              echo "❌ Container failed to start"
-              sudo docker logs flask_app
+              echo "❌ Deployment failed"
+              sudo docker-compose logs
               exit 1
             fi
             
-            echo "✅ Deployment completed successfully!"
+            # ניקוי images ישנים
+            sudo docker image prune -f
+            
+            echo "✅ Full stack deployment completed successfully!"
             
       # אלטרנטיבה: דיפלוי עם docker-compose בשרת
       - name: Deploy with docker-compose to AWS
