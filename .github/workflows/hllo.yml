@@ -1,55 +1,50 @@
 name: Docker CI/CD with AWS Deploy
+
 on:
   push:
     branches: ["main"]
+
 jobs:
   build-test-push-deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Debug show all files
-        run: |
-          pwd
-          ls -R
-          
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
-          
-      - name: Build Flask app image
+
+      - name: Build and test Flask app image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: false
+          push: false # Build locally for testing
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:test
-          
-      - name: Start docker-compose
+
+      - name: Run docker-compose for testing
         run: docker compose up -d
-        
-      - name: Wait for containers
-        run: sleep 20
-        
+
+      - name: Wait for services to be ready
+        run: |
+          sleep 20 # Wait a fixed time for services to start
+          # Alternatively, use a smarter check
+          # while ! curl http://localhost:5000; do sleep 5; done
+
       - name: Run tester script
         run: |
-          find . -name "check.sh" -exec chmod +x {} \;
-          find . -name "check.sh" -exec {} \;
-          
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          echo "Tests failed! Showing logs:"
-          docker logs flask_app || true
-          docker logs flask_mysql || true
-          
-      - name: Stop containers
+          cd tester
+          chmod +x check.sh
+          ./check.sh
+
+      - name: Stop testing containers
         if: always()
         run: docker compose down -v
-        
+
       - name: Push image to Docker Hub
         if: success()
         uses: docker/build-push-action@v6
@@ -59,8 +54,7 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
 
-      # דיפלוי עם docker-compose
-      - name: Deploy to AWS EC2 with docker-compose
+      - name: Deploy to AWS EC2
         if: success()
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -70,83 +64,35 @@ jobs:
           port: ${{ secrets.AWS_PORT || 22 }}
           script: |
             echo "🚀 Starting deployment to AWS..."
-            
-            # יצירת תיקיית פרויקט אם לא קיימת
+            # Change directory to project folder, or create if it doesn't exist
             mkdir -p /home/ec2-user/flask-app
             cd /home/ec2-user/flask-app
-            
-            # הורדת הקבצים הנדרשים מ-GitHub (docker-compose.yml וכו')
+
+            # Update repository files
             if [ ! -d ".git" ]; then
-              # אם זה הפעם הראשונה - clone הרפוזיטורי
               sudo yum install -y git
               git clone https://github.com/${{ github.repository }}.git .
             else
-              # אם כבר קיים - pull עדכונים
               git pull origin main
             fi
-            
-            # עצירת קונטיינרים קיימים
-            sudo docker-compose down || true
-            
-            # עדכון התמונה החדשה מ-Docker Hub
+
+            # Pull latest Docker image from Docker Hub
             sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
-            
-            # עדכון docker-compose.yml להשתמש בתמונה מ-Docker Hub
+
+            # Update docker-compose.yml with the correct image tag
             sed -i 's/image: flask_app:latest/image: ${{ secrets.DOCKER_HUB_USERNAME }}\/flask_app:latest/' docker-compose.yml
-            
-            # הפעלת כל השירותים
-            sudo docker-compose up -d
-            
-            # המתנה שהשירותים יעלו
-            sleep 15
-            
-            # בדיקה שהקונטיינרים רצים
+
+            # Clean up old containers and networks before starting new ones
+            sudo docker-compose down -v || true
+
+            # Start services with the updated image
+            sudo docker-compose up -d --force-recreate
+
+            # Verify services are running
             echo "📋 Running containers:"
             sudo docker-compose ps
-            
-            # בדיקת בריאות
-            if sudo docker-compose ps | grep flask_app | grep Up; then
-              echo "✅ Flask App is running successfully!"
-              echo "🌐 Flask App: http://${{ secrets.AWS_HOST }}:5000"
-              echo "🗄️  phpMyAdmin: http://${{ secrets.AWS_HOST }}:8080"
-            else
-              echo "❌ Deployment failed"
-              sudo docker-compose logs
-              exit 1
-            fi
-            
-            # ניקוי images ישנים
+
+            # Prune old images
             sudo docker image prune -f
             
             echo "✅ Full stack deployment completed successfully!"
-            
-      # אלטרנטיבה: דיפלוי עם docker-compose בשרת
-      - name: Deploy with docker-compose to AWS
-        if: success()
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.AWS_HOST }}
-          username: ${{ secrets.AWS_USERNAME }}
-          key: ${{ secrets.AWS_PRIVATE_KEY }}
-          port: ${{ secrets.AWS_PORT || 22 }}
-          script: |
-            cd /home/ubuntu/your-app  # נתיב לתיקיית האפליקציה בשרת
-            
-            # עדכון הקוד מ-Git
-            git pull origin main
-            
-            # עדכון הקונטיינרים
-            docker-compose pull
-            docker-compose up -d --force-recreate
-            
-            # ניקוי
-            docker system prune -f
-            
-      # הודעת הצלחה
-      - name: Deployment Success Notification
-        if: success()
-        run: |
-          echo "🎉 Full CI/CD pipeline completed successfully!"
-          echo "✅ Image built and tested"
-          echo "✅ Image pushed to Docker Hub"
-          echo "✅ Application deployed to AWS server"
