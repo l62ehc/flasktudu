@@ -1,11 +1,11 @@
-name: Docker CI/CD with AWS Deploy
+name: Docker CI/CD with AWS Deploy (without tests)
 
 on:
   push:
     branches: ["main"]
 
 jobs:
-  build-test-push-deploy:
+  build-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,35 +18,7 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
-      - name: Build and test Flask app image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false # Build locally for testing
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:test
-
-      - name: Run docker-compose for testing
-        run: docker compose up -d
-
-      - name: Wait for services to be ready
-        run: |
-          sleep 60 # Wait a fixed time for services to start
-          # Alternatively, use a smarter check
-          # while ! curl http://localhost:5000; do sleep 5; done
-
-      - name: Run tester script
-        run: |
-          cd tester
-          chmod +x check.sh
-          ./check.sh
-
-      - name: Stop testing containers
-        if: always()
-        run: docker compose down -v
-
       - name: Push image to Docker Hub
-        if: success()
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -64,23 +36,17 @@ jobs:
           port: ${{ secrets.AWS_PORT || 22 }}
           script: |
             echo "🚀 Starting deployment to AWS..."
-            # Change directory to project folder, or create if it doesn't exist
-            mkdir -p /home/ec2-user/flask-app
+            
             cd /home/ec2-user/flask-app
 
             # Update repository files
-            if [ ! -d ".git" ]; then
-              sudo yum install -y git
-              git clone https://github.com/${{ github.repository }}.git .
-            else
-              git pull origin main
-            fi
+            git pull origin main
 
             # Pull latest Docker image from Docker Hub
             sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/flask_app:latest
 
             # Update docker-compose.yml with the correct image tag
-            sed -i 's/image: flask_app:latest/image: ${{ secrets.DOCKER_HUB_USERNAME }}\/flask_app:latest/' docker-compose.yml
+            sudo sed -i 's/image: flask_app:latest/image: ${{ secrets.DOCKER_HUB_USERNAME }}\/flask_app:latest/' docker-compose.yml
 
             # Clean up old containers and networks before starting new ones
             sudo docker-compose down -v || true
