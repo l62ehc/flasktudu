@@ -31,7 +31,7 @@ jobs:
 
       - name: Wait for services to be ready
         run: |
-          sleep 20 # Wait a fixed time for services to start
+          sleep 60 # Wait a fixed time for services to start
           # Alternatively, use a smarter check
           # while ! curl http://localhost:5000; do sleep 5; done
 
