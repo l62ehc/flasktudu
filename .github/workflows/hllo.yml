@@ -29,7 +29,11 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Install SSH client
+      - name: Checkout repository (for deploy files)
+        # חובה לבצע checkout גם כאן כדי שיהיה גישה לקבצי ה-YAML להעתקה
+        uses: actions/checkout@v4
+
+      - name: Install SSH client and rsync
         run: sudo apt-get update && sudo apt-get install -y openssh-client rsync
 
       - name: Start SSH agent and add key
@@ -37,11 +41,29 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.AWS_PRIVATE_KEY }}
 
-      - name: Deploy to EC2
+      - name: Sync Docker Compose Files 🚀
+        # מעתיק את הקבצים הדרושים (docker-compose.yml) לתיקיית ~/app בשרת
+        run: |
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no" docker-compose.yml ${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}:~/app/
+          # אם יש לך קבצים נוספים הדרושים לפריסה (כמו תיקיית db), הוסף אותם כאן:
+          # rsync -avz -e "ssh -o StrictHostKeyChecking=no" db/ ${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}:~/app/db/
+
+
+      - name: Deploy to EC2 (Final Command)
         run: |
           ssh -o StrictHostKeyChecking=no "${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}" << 'EOF'
-            cd ~/app
+            
+            # 1. מעבר לתיקייה הנכונה, שבה הקובץ כעת נמצא
+            cd ~/app || exit 1 
+            
+            # 2. כניסה ל-Docker Hub בשרת (אם נדרש)
             docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}
-           sudo docker-compose pull
-            sudo docker-compose up -d
+            
+            # 3. משיכת התמונה החדשה (עם sudo)
+            sudo docker-compose pull
+            
+            # 4. הפעלה מחדש של הקונטיינרים (עם sudo ו-force-recreate)
+            sudo docker-compose up -d --force-recreate
+            
+            echo "✅ Deployment completed on EC2"
           EOF
