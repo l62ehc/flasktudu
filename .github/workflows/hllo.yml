@@ -40,14 +40,10 @@ jobs:
         uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ secrets.AWS_PRIVATE_KEY }}
-
-      - name: Sync Docker Compose Files 🚀
-        # מעתיק את הקבצים הדרושים (docker-compose.yml) לתיקיית ~/app בשרת
+      - name: Sync All Project Files 🚀
         run: |
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no" docker-compose.yml ${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}:~/app/
-          # אם יש לך קבצים נוספים הדרושים לפריסה (כמו תיקיית db), הוסף אותם כאן:
-          # rsync -avz -e "ssh -o StrictHostKeyChecking=no" db/ ${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}:~/app/db/
-
+         ssh -o StrictHostKeyChecking=no "${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}" 'mkdir -p ~/app'
+         rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ "${{ secrets.AWS_USERNAME }}@${{ secrets.AWS_HOST }}":~/app/
 
       - name: Deploy to EC2 (Final Command)
         run: |
